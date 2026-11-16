@@ -10,5 +10,7 @@ jobs:
       - working-directory: calamities
         run: ./gradlew compileJava -q
       - run: |
-          J=$(find ~/.gradle -name 'minecraft-clientOnly*.jar' -o -name 'minecraft-merged*.jar' | grep -v sources | head -1); echo "JAR=$J"
-          for c in net.minecraft.client.renderer.fog.environment.AtmosphericFogEnvironment net.minecraft.client.renderer.fog.environment.FogEnvironment net.minecraft.client.renderer.fog.FogData; do echo "=== $c"; javap -p -cp "$J" $c; done
+          for J in $(find ~/.gradle/caches/fabric-loom ~/.gradle/caches -name '*.jar' 2>/dev/null | grep -i minecraft | grep -v sources | sort -u); do
+            if unzip -l "$J" 2>/dev/null | grep -q 'fog/environment/AtmosphericFogEnvironment.class'; then echo "JAR=$J"; FOUND=$J; fi
+          done
+          for c in net.minecraft.client.renderer.fog.environment.AtmosphericFogEnvironment net.minecraft.client.renderer.fog.environment.FogEnvironment net.minecraft.client.renderer.fog.FogData net.minecraft.world.entity.Entity; do echo "=== $c"; javap -p -cp "$FOUND" $c | grep -iE "class|fog|Color|freez|canFreeze|environmental|skyEnd|cloudEnd|renderDistance" ; done
