@@ -57,6 +57,8 @@ public class Calamities implements ModInitializer {
         FabricDefaultAttributeRegistry.register(WRAITH, Wraith.createAttributes());
         PayloadTypeRegistry.playS2C().register(QuakeFx.TYPE, QuakeFx.CODEC);
         PayloadTypeRegistry.playS2C().register(WindFx.TYPE, WindFx.CODEC);
+        PayloadTypeRegistry.playS2C().register(io.github.kestrelworks.calamities.net.ThunderVoice.TYPE, io.github.kestrelworks.calamities.net.ThunderVoice.CODEC);
+        net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.register((h, server) -> Disasters.left(h.player.getUUID()));
         PayloadTypeRegistry.playS2C().register(io.github.kestrelworks.calamities.net.BlizzardFx.TYPE, io.github.kestrelworks.calamities.net.BlizzardFx.CODEC);
         net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.JOIN.register((h, sender, server) -> {
             if (!isReplay(server)) server.execute(() -> Disasters.joined(h.player));

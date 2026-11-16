@@ -14,7 +14,7 @@ import net.minecraft.world.entity.player.Player;
 
 /**
  * Who a disaster is about, when a view-sync mod shares the world. Looked up by reflection (no compile dependency).
- * Without that mod, or with an empty targetGroup: everybody is a target and the real world weather is used.
+ * Without that mod: everybody is a target and the real world weather is used.
  */
 final class Pv {
 
@@ -46,14 +46,24 @@ final class Pv {
         }
     }
 
-    /** True when a view-sync mod is in and a target group is set. */
+    /** True when a view-sync mod is in. */
     static boolean active() {
         look();
-        String g = CalamityConfig.get().targetGroup;
-        return present && g != null && !g.isBlank();
+        return present;
     }
 
-    private static String group() { return CalamityConfig.get().targetGroup; }
+    private static boolean warnedBlank;
+
+    /** The configured group; an empty setting falls back to the default "S" (with one warning). */
+    private static String group() {
+        String g = CalamityConfig.get().targetGroup;
+        if (g != null && !g.isBlank()) return g;
+        if (!warnedBlank) {
+            warnedBlank = true;
+            Calamities.LOG.warn("targetGroup is empty while view sync is in; using S");
+        }
+        return "S";
+    }
 
     /** Is this player the one disasters are about (camera, freezing, wind, lightning hits, voices, where they start). */
     static boolean isTarget(Player p) {

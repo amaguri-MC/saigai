@@ -19,11 +19,15 @@ public abstract class LightningBoltMixin {
             target = "Lnet/minecraft/world/level/Level;playLocalSound(DDDLnet/minecraft/sounds/SoundEvent;Lnet/minecraft/sounds/SoundSource;FFZ)V"))
     private void calamities$thunder(Level level, double x, double y, double z, SoundEvent event, SoundSource source,
                                     float volume, float pitch, boolean distanceDelay) {
-        // variant < 0: a bolt of the ongoing thunderstorm, which rolls the ordinary thunder (the voice is only on the key-press bolts)
-        if ((Object) this instanceof StormBolt bolt && bolt.variant() >= 0) {
-            SoundEvent own = SoundEvent.createVariableRangeEvent(Calamities.id(Disasters.voiceSound("storm.thunder.", bolt.variant())));
-            level.playLocalSound(x, y, z, own, source, volume, 1.0f, distanceDelay);
-            return;
+        // every bolt is synced as an ordinary one; a key-press bolt's voice clip was sent only to the targets
+        // (ThunderVoice), who roll it here instead of the ordinary thunder
+        if ((Object) this instanceof StormBolt) {
+            int v = io.github.kestrelworks.calamities.VoiceQueue.take(x, y, z);
+            if (v >= 0) {
+                SoundEvent own = SoundEvent.createVariableRangeEvent(Calamities.id(Disasters.voiceSound("storm.thunder.", v)));
+                level.playLocalSound(x, y, z, own, source, volume, 1.0f, distanceDelay);
+                return;
+            }
         }
         level.playLocalSound(x, y, z, event, source, volume, pitch, distanceDelay);
     }

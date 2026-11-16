@@ -6,6 +6,7 @@ import com.mojang.authlib.properties.Property;
 import com.mojang.authlib.properties.PropertyMap;
 import io.github.kestrelworks.calamities.net.BlizzardFx;
 import io.github.kestrelworks.calamities.net.QuakeFx;
+import io.github.kestrelworks.calamities.net.ThunderVoice;
 import io.github.kestrelworks.calamities.net.WindFx;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -296,8 +297,14 @@ public final class Disasters {
         if (b == null) return;
         b.snapTo(pos);
         b.setVisualOnly(true);
-        b.setVariant(variant);
+        b.setVariant(-1);   // seen and heard by anyone near as an ordinary bolt; the voice goes to the targets only
         level.addFreshEntity(b);
+        if (variant >= 0) {
+            ThunderVoice tv = new ThunderVoice(pos.x, pos.y, pos.z, variant);
+            for (ServerPlayer t : targets(level.getServer())) {
+                if (t.level() == level && t.distanceToSqr(pos) < 256.0 * 256.0) ServerPlayNetworking.send(t, tv);
+            }
+        }
         if (harm) {
             AABB box = new AABB(pos.x - 1.4, pos.y - 1.5, pos.z - 1.4, pos.x + 1.4, pos.y + 3.5, pos.z + 1.4);
             for (Entity e : level.getEntities((Entity) null, box, e -> e instanceof LivingEntity && e.isAlive() && !(e instanceof Wraith))) {
@@ -502,6 +509,12 @@ public final class Disasters {
 
     /** Who has been sent the running blizzard. */
     private static final java.util.Set<UUID> blizzardShown = new java.util.HashSet<>();
+
+    /** A player who left: forget what they were shown, so coming back shows it again. */
+    public static void left(UUID id) {
+        blizzardShown.remove(id);
+        stormShown.remove(id);
+    }
 
     /** A player who joins while it blows sees it too (if they are a target; others are picked up by the once-a-second check). */
     public static void joined(ServerPlayer p) {

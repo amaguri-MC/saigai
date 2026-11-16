@@ -23,7 +23,9 @@ public class CalamitiesClient implements ClientModInitializer {
         net.fabricmc.fabric.api.client.particle.v1.ParticleFactoryRegistry.getInstance().register(Calamities.FLAKE, FlakeParticle.Provider::new);
         ClientPlayNetworking.registerGlobalReceiver(io.github.kestrelworks.calamities.net.BlizzardFx.TYPE, (p, ctx) ->
                 ClientFx.startBlizzard(p.dirX(), p.dirZ(), p.ticks(), p.start()));
+        ClientPlayNetworking.registerGlobalReceiver(io.github.kestrelworks.calamities.net.ThunderVoice.TYPE, (p, ctx) ->
+                io.github.kestrelworks.calamities.VoiceQueue.add(p.x(), p.y(), p.z(), p.variant()));
         ClientTickEvents.END_CLIENT_TICK.register(ClientFx::tick);
-        ClientPlayConnectionEvents.DISCONNECT.register((h, mc) -> ClientFx.stopAll());
+        ClientPlayConnectionEvents.DISCONNECT.register((h, mc) -> { ClientFx.stopAll(); io.github.kestrelworks.calamities.VoiceQueue.clear(); });
     }
 }
