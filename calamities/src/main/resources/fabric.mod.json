@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "calamities",
+  "version": "${version}",
+  "name": "Natural Calamities",
+  "description": "Earthquakes, lightning storms, windstorms and restless spirits. Disasters strike without warning and grow fiercer the longer you survive.",
+  "authors": ["KestrelWorks"],
+  "contact": {},
+  "license": "All Rights Reserved",
+  "icon": "assets/calamities/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["io.github.kestrelworks.calamities.Calamities"],
+    "client": ["io.github.kestrelworks.calamities.client.CalamitiesClient"]
+  },
+  "mixins": ["calamities.mixins.json"],
+  "depends": { "fabricloader": ">=0.18.0", "minecraft": "1.21.11", "fabric-api": "*" }
+}

@@ -1,0 +1,30 @@
+name: build
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21' }
+      - uses: gradle/actions/setup-gradle@v4
+      - name: build calamities
+        working-directory: calamities
+        run: ./gradlew remapJar --stacktrace
+      - name: build ppsaigai
+        working-directory: ppsaigai
+        run: ./gradlew remapJar --stacktrace
+      - name: list jars
+        run: ls -la calamities/build/libs ppsaigai/build/libs
+      - name: push jars to builds branch
+        if: github.ref == 'refs/heads/main'
+        run: |
+          mkdir out && cp calamities/build/libs/*.jar ppsaigai/build/libs/*.jar out/
+          rm -f out/*-sources.jar
+          cd out && git init -q -b builds && git add . \
+            && git -c user.name=ci -c user.email=ci@local commit -qm "build ${GITHUB_SHA::7}" \
+            && git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" builds

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "ppsaigai",
+  "version": "${version}",
+  "name": "ppsaigai",
+  "description": "Sends signals to Natural Calamities on another server.",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.pinpoint.saigai.Saigai"],
+    "client": ["com.pinpoint.saigai.client.SaigaiClient"]
+  },
+  "depends": { "fabricloader": ">=0.18.0", "minecraft": "1.21.11", "fabric-api": "*" }
+}
