@@ -62,6 +62,11 @@ public class CalamityConfig {
     /** Water near players freezes over, snow settles on the ground. */
     public boolean blizzardIce = true, blizzardSnow = true;
 
+    /** With a view-sync mod in the world: the group whose members disasters are about (empty = everybody, real weather). */
+    public String targetGroup = "S";
+    /** With a view-sync mod: others within this many blocks (same dimension) of a target see the storm sky and blizzard while it lasts. */
+    public float shareRadius = 64f;
+
     /** World event feed (lets an external weather/event controller drive disasters). */
     public boolean feedEnabled = true;
     public String feedHost = "127.0.0.1";

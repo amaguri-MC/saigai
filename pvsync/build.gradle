@@ -1,0 +1,43 @@
+plugins {
+    id 'fabric-loom' version '1.17.11'
+    id 'java'
+}
+version = project.mod_version
+group = project.maven_group
+base { archivesName = project.archives_base_name }
+
+repositories {
+    maven { url = "https://maven.maxhenkel.de/repository/public" }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    compileOnly "de.maxhenkel.voicechat:voicechat-api:${project.voicechat_api_version}"
+    // SVC jar only to compile the optional packet filter by class name (reflection is used at runtime)
+    if (!project.hasProperty('noVoice') && file("devlibs/voicechat-fabric-1.21.11-2.6.11.jar").exists())
+        modLocalRuntime files("devlibs/voicechat-fabric-1.21.11-2.6.11.jar")
+}
+loom {
+    accessWidenerPath = file("src/main/resources/pvsync.accesswidener")
+    runs {
+        server { programArgs "--nogui" }
+    }
+}
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+tasks.withType(JavaCompile).configureEach {
+    it.options.encoding = "UTF-8"
+    it.options.release = 21
+}
+processResources {
+    inputs.property "version", project.version
+    filesMatching("fabric.mod.json") { expand "version": project.version }
+}
+jar {
+    from("LICENSE_MIT_upstream.txt")
+}

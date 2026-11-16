@@ -111,8 +111,14 @@ public class Wraith extends Mob {
         Player target = haunting == null ? null : level().getPlayerByUUID(haunting);
         if (target == null || !target.isAlive() || target.isSpectator() || target.level() != level()
                 || target.distanceToSqr(this) > 48 * 48) {
-            target = level().getNearestPlayer(this, 48);
-            if (target != null && target.isSpectator()) target = null;
+            // a new victim is only ever one of the targets (anyone may see it; it never turns to the others)
+            target = null;
+            double best = 48 * 48;
+            for (Player o : level().players()) {
+                if (o.isSpectator() || !o.isAlive() || !Pv.isTarget(o)) continue;
+                double d2 = o.distanceToSqr(this);
+                if (d2 < best) { best = d2; target = o; }
+            }
         }
         if (target == null) { beginFade(); setDeltaMovement(Vec3.ZERO); return; }
 

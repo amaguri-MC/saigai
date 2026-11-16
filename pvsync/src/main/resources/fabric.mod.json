@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "pvsync",
+  "version": "${version}",
+  "name": "pvsync",
+  "description": "Server-side view sync.",
+  "authors": [],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["net.pvsync.PvMod"],
+    "voicechat": ["net.pvsync.VoiceCompat"]
+  },
+  "mixins": ["pvsync.mixins.json"],
+  "accessWidener": "pvsync.accesswidener",
+  "depends": {
+    "fabricloader": ">=0.18.0",
+    "minecraft": "~1.21.11",
+    "fabric-api": "*"
+  }
+}

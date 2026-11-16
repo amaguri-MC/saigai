@@ -101,6 +101,11 @@ public class Saigai implements ModInitializer {
     private static void startRouter() {
         SaigaiConfig c = SaigaiConfig.get();
         if (!c.routerEnabled || router != null) return;
+        // 同じサーバーに Natural Calamities も入っている＝1台で撮る形。入口はマイクラ本体が 25565 を使うので開かない
+        if (net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("calamities")) {
+            LOG.info("(ppsaigai) 同じサーバーに calamities があるので入口は開かない（合図は {}:{} へ）", c.feedHost, c.feedPort);
+            return;
+        }
         router = new Router(new Router.Settings() {
             public String bind() { return c.routerBind; }
             public int port() { return c.routerPort; }

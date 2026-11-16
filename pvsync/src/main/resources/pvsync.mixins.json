@@ -1,0 +1,8 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "net.pvsync.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": ["BanListMixin", "BedRuleMixin", "BossBarCommandsMixin", "BossBarMixin", "ChunkSkullMixin", "CommandsMixin", "ConnectionMixin", "EncodeForMixin", "EntityMixin", "GameRuleCommandMixin", "HandshakeMixin", "LegacyQueryMixin", "ListCommandsMixin", "LoginMixin", "MapMixin", "MsgMirrorMixin", "NameListsMixin", "PlayerListMixin", "PlayerTickMixin", "ProfileCodecMixin", "ResolveForMixin", "ScoreHolderArgumentMixin", "ScoreboardCommandMixin", "ScoreboardOwnerMixin", "SelectorMixin", "SendMixin", "ServerLevelMixin", "ServerPlayerMixin", "SkullTagMixin", "SourceStackMixin", "StatusAccessor", "StatusMixin", "TeamCommandMixin", "TeamMsgMirrorMixin", "TeleportMixin", "TimeCommandMixin", "VoiceMixin", "WaypointCommandMixin", "WaypointMixin", "WeatherCommandMixin"],
+  "injectors": { "defaultRequire": 1 }
+}

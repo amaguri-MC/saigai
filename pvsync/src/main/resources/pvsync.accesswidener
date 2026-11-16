@@ -1,0 +1,30 @@
+accessWidener v2 named
+accessible class net/minecraft/server/level/ChunkMap$TrackedEntity
+accessible field net/minecraft/server/level/ChunkMap entityMap Lit/unimi/dsi/fastutil/ints/Int2ObjectMap;
+accessible field net/minecraft/server/level/ChunkMap$TrackedEntity seenBy Ljava/util/Set;
+accessible method net/minecraft/network/protocol/game/ClientboundSetPlayerTeamPacket <init> (Ljava/lang/String;ILjava/util/Optional;Ljava/util/Collection;)V
+accessible field net/minecraft/network/protocol/game/ClientboundSetPlayerTeamPacket method I
+accessible field net/minecraft/network/protocol/game/ClientboundPlayerInfoUpdatePacket entries Ljava/util/List;
+mutable field net/minecraft/network/protocol/game/ClientboundPlayerInfoUpdatePacket entries Ljava/util/List;
+accessible field net/minecraft/network/protocol/game/ClientboundPlayerInfoUpdatePacket actions Ljava/util/EnumSet;
+mutable field net/minecraft/network/protocol/game/ClientboundPlayerInfoUpdatePacket actions Ljava/util/EnumSet;
+accessible field net/minecraft/network/protocol/game/ClientboundBossEventPacket id Ljava/util/UUID;
+accessible field net/minecraft/network/protocol/game/ServerboundTeleportToEntityPacket uuid Ljava/util/UUID;
+accessible field net/minecraft/server/network/ServerStatusPacketListenerImpl connection Lnet/minecraft/network/Connection;
+accessible field net/minecraft/server/network/ServerLoginPacketListenerImpl connection Lnet/minecraft/network/Connection;
+accessible method net/minecraft/server/players/PlayerList updateEntireScoreboard (Lnet/minecraft/server/ServerScoreboard;Lnet/minecraft/server/level/ServerPlayer;)V
+accessible field net/minecraft/server/MinecraftServer statusIcon Lnet/minecraft/network/protocol/status/ServerStatus$Favicon;
+accessible field net/minecraft/world/level/saveddata/maps/MapItemSavedData decorations Ljava/util/Map;
+accessible field net/minecraft/network/protocol/game/ClientboundBossEventPacket operation Lnet/minecraft/network/protocol/game/ClientboundBossEventPacket$Operation;
+accessible class net/minecraft/network/protocol/game/ClientboundBossEventPacket$Operation
+accessible class net/minecraft/network/protocol/game/ClientboundBossEventPacket$AddOperation
+accessible field net/minecraft/network/protocol/game/ClientboundBossEventPacket$AddOperation name Lnet/minecraft/network/chat/Component;
+accessible field net/minecraft/network/protocol/game/ClientboundBossEventPacket$AddOperation progress F
+accessible field net/minecraft/network/protocol/game/ClientboundBossEventPacket$AddOperation color Lnet/minecraft/world/BossEvent$BossBarColor;
+accessible field net/minecraft/network/protocol/game/ClientboundBossEventPacket$AddOperation overlay Lnet/minecraft/world/BossEvent$BossBarOverlay;
+accessible field net/minecraft/network/protocol/game/ClientboundBossEventPacket$AddOperation darkenScreen Z
+accessible field net/minecraft/network/protocol/game/ClientboundBossEventPacket$AddOperation playMusic Z
+accessible field net/minecraft/network/protocol/game/ClientboundBossEventPacket$AddOperation createWorldFog Z
+accessible class net/minecraft/network/protocol/game/ClientboundBossEventPacket$UpdateNameOperation
+accessible class net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData$BlockEntityInfo
+accessible field net/minecraft/network/protocol/game/ClientboundLevelChunkPacketData$BlockEntityInfo type Lnet/minecraft/world/level/block/entity/BlockEntityType;

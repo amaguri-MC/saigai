@@ -18,12 +18,15 @@ jobs:
       - name: build ppsaigai
         working-directory: ppsaigai
         run: ./gradlew remapJar --stacktrace
+      - name: build pvsync
+        working-directory: pvsync
+        run: ./gradlew remapJar --stacktrace
       - name: list jars
-        run: ls -la calamities/build/libs ppsaigai/build/libs
+        run: ls -la calamities/build/libs ppsaigai/build/libs pvsync/build/libs
       - name: push jars to builds branch
         if: github.ref == 'refs/heads/main'
         run: |
-          mkdir out && cp calamities/build/libs/*.jar ppsaigai/build/libs/*.jar out/
+          mkdir out && cp calamities/build/libs/*.jar ppsaigai/build/libs/*.jar pvsync/build/libs/*.jar out/
           rm -f out/*-sources.jar
           cd out && git init -q -b builds && git add . \
             && git -c user.name=ci -c user.email=ci@local commit -qm "build ${GITHUB_SHA::7}" \

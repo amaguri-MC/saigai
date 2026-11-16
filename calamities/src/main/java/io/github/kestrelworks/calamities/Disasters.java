@@ -80,6 +80,8 @@ public final class Disasters {
         weatherOurs = false;
         blizzardLeft = blizzardTotal = 0;
         lastCrack.clear();
+        blizzardShown.clear();
+        stormShown.clear();
     }
 
     public static boolean stormOn() { return stormLeft > 0; }
@@ -87,11 +89,19 @@ public final class Disasters {
     /** Middle of the fissure tearing open right now, or null. */
     public static Vec3 fissureCenter() { return fissure == null ? null : fissure.center(); }
 
-    static List<ServerPlayer> targets(MinecraftServer server) {
+    /** Everyone who is up and about: used for safety distances (nothing may land on anybody). */
+    static List<ServerPlayer> everyone(MinecraftServer server) {
         List<ServerPlayer> out = new ArrayList<>();
         for (ServerPlayer p : server.getPlayerList().getPlayers()) {
             if (p.isAlive() && !p.isSpectator()) out.add(p);
         }
+        return out;
+    }
+
+    /** The ones disasters are about: where they start, camera, freezing, wind, lightning hits, voices. */
+    static List<ServerPlayer> targets(MinecraftServer server) {
+        List<ServerPlayer> out = everyone(server);
+        out.removeIf(p -> !Pv.isTarget(p));
         return out;
     }
 
@@ -143,7 +153,7 @@ public final class Disasters {
         }
         if (cand.isEmpty()) { Calamities.LOG.info("fissure: nobody on open ground"); return; }
         ServerPlayer p = cand.get(RNG.nextInt(cand.size()));
-        fissure = Fissure.plan(p.level(), p, quakeMag, all);
+        fissure = Fissure.plan(p.level(), p, quakeMag, everyone(server));
         Calamities.LOG.info(fissure == null ? "fissure: no safe spot near {}" : "fissure opens near {} at {} ({} columns)",
                 p.getScoreboardName(), fissure == null ? "" : fissure.center(), fissure == null ? 0 : fissure.size());
     }
@@ -185,7 +195,7 @@ public final class Disasters {
                 }
                 if (hit == null) continue;
                 final BlockPos h = hit;
-                boolean nearAnyone = ps.stream().anyMatch(o -> o.level() == level
+                boolean nearAnyone = everyone(server).stream().anyMatch(o -> o.level() == level
                         && Math.abs(o.getX() - (h.getX() + 0.5)) < 1.6 && Math.abs(o.getZ() - (h.getZ() + 0.5)) < 1.6);
                 if (nearAnyone) continue;
                 FallingBlockEntity.fall(level, hit, level.getBlockState(hit));
@@ -215,12 +225,13 @@ public final class Disasters {
             int add = Math.max(1, CalamityConfig.get().stormSeconds) * 20;
             if (stormLeft <= 0) {
                 // the weather flags, not the sky levels (those fade in over ~4 s and would read "clear" at first)
-                weatherOurs = !ow.getLevelData().isThundering();
-                wasRaining = ow.getLevelData().isRaining();
+                weatherOurs = !Pv.thundering(ow);
+                wasRaining = Pv.raining(ow);
                 stormRun = 0;
             }
             stormLeft = Math.min(stormLeft + add, add * 3);
-            ow.setWeatherParameters(0, stormLeft + 20 * 20, true, true);
+            Pv.setWeather(ow, 0, stormLeft + 20 * 20, true, true);
+            shareStorm(server);
         }
         for (ServerPlayer p : ps) {
             int n = 2 + RNG.nextInt(2);
@@ -291,6 +302,7 @@ public final class Disasters {
             AABB box = new AABB(pos.x - 1.4, pos.y - 1.5, pos.z - 1.4, pos.x + 1.4, pos.y + 3.5, pos.z + 1.4);
             for (Entity e : level.getEntities((Entity) null, box, e -> e instanceof LivingEntity && e.isAlive() && !(e instanceof Wraith))) {
                 if (!level.canSeeSky(e.blockPosition().above())) continue;
+                if (e instanceof Player pl && !Pv.isTarget(pl)) continue;   // seen by anyone near, struck only the target
                 e.thunderHit(level, b);
             }
         }
@@ -315,21 +327,23 @@ public final class Disasters {
         boolean slept = false;
         int sleeping = 0, awake = 0;
         for (ServerPlayer p : ow.players()) {
-            if (p.isSpectator()) continue;
+            if (p.isSpectator() || !Pv.isTarget(p)) continue;
             if (p.isSleepingLongEnough()) sleeping++; else awake++;
         }
         if (sleeping > 0) {
             int pct = ow.getGameRules().get(net.minecraft.world.level.gamerules.GameRules.PLAYERS_SLEEPING_PERCENTAGE);
             slept = sleeping >= Math.max(1, (int) Math.ceil((sleeping + awake) * pct / 100.0));
         }
-        boolean cleared = !ow.getLevelData().isThundering();   // /weather clear flips the flag at once
+        boolean cleared = !Pv.thundering(ow);   // /weather clear flips the flag at once
         if (slept || (stormRun > 2 && cleared)) {
             endStorm(server, slept ? "slept" : "weather cleared", !slept && cleared);
             return;
         }
         if (stormLeft == 0) { endStorm(server, "over", false); return; }
+        if (tick % 20 == 0) shareStorm(server);
         CalamityConfig c = CalamityConfig.get();
         List<ServerPlayer> ps = targets(server);
+        List<ServerPlayer> all = everyone(server);
         for (ServerPlayer p : ps) {
             if (p.level() != ow) continue;
             if (RNG.nextInt(Math.max(1, c.stormBoltEvery)) != 0) continue;
@@ -346,7 +360,7 @@ public final class Disasters {
                     double dist = 6 + RNG.nextDouble() * 26, ang = RNG.nextDouble() * Math.PI * 2;
                     Vec3 g = ground(ow, p, p.getX() + Math.cos(ang) * dist, p.getZ() + Math.sin(ang) * dist);
                     boolean near = false;
-                    for (ServerPlayer o : ps) if (o.level() == ow && o.position().multiply(1, 0, 1).distanceTo(g.multiply(1, 0, 1)) < 4.5) near = true;
+                    for (ServerPlayer o : all) if (o.level() == ow && o.position().multiply(1, 0, 1).distanceTo(g.multiply(1, 0, 1)) < 4.5) near = true;
                     if (!near) at = g;
                 }
             }
@@ -355,14 +369,34 @@ public final class Disasters {
         }
     }
 
+    /** Players (not targets) shown the storm sky because they stand near a target; kept up to date while the storm lasts. */
+    private static final java.util.Set<UUID> stormShown = new java.util.HashSet<>();
+
+    private static void shareStorm(MinecraftServer server) {
+        java.util.Set<UUID> want = new java.util.HashSet<>();
+        List<ServerPlayer> near = stormLeft > 0 ? Pv.nearby(server, targets(server)) : List.of();
+        for (ServerPlayer o : near) {
+            want.add(o.getUUID());
+            if (stormShown.add(o.getUUID())) Pv.overlay(o, true);
+        }
+        for (java.util.Iterator<UUID> it = stormShown.iterator(); it.hasNext(); ) {
+            UUID id = it.next();
+            if (want.contains(id)) continue;
+            it.remove();
+            ServerPlayer o = server.getPlayerList().getPlayer(id);
+            if (o != null) Pv.overlay(o, false);
+        }
+    }
+
     private static void endStorm(MinecraftServer server, String why, boolean alreadyClear) {
         stormLeft = 0;
         ServerLevel ow = server.overworld();
         if (!alreadyClear) {
-            if (weatherOurs && !wasRaining) ow.setWeatherParameters(20 * 60 * 10, 0, false, false);
-            else ow.setWeatherParameters(0, 20 * 60 * 3, true, false);
+            if (weatherOurs && !wasRaining) Pv.setWeather(ow, 20 * 60 * 10, 0, false, false);
+            else Pv.setWeather(ow, 0, 20 * 60 * 3, true, false);
         }
         weatherOurs = false;
+        shareStorm(server);   // stormLeft is 0 now: everyone shown the storm sky goes back to their own
         Calamities.LOG.info("thunderstorm ends ({})", why);
     }
 
@@ -439,14 +473,40 @@ public final class Disasters {
         sendBlizzard(server);
     }
 
-    private static void sendBlizzard(MinecraftServer server) {
+    private static void sendBlizzard(MinecraftServer server) { sendBlizzard(server, true); }
+
+    /** everyone = a press changed it (tell all who should have it); false = only those who have not been told yet. */
+    private static void sendBlizzard(MinecraftServer server, boolean everyone) {
         BlizzardFx fx = blizzardLeft > 0 ? new BlizzardFx(blizzardX, blizzardZ, blizzardTotal, blizzardStart) : new BlizzardFx(0, 0, 0, 0);
-        for (ServerPlayer p : server.getPlayerList().getPlayers()) ServerPlayNetworking.send(p, fx);
+        // the targets, and anyone who stands near one (they can see and hear it, nothing else of it reaches them)
+        List<ServerPlayer> ts = targets(server);
+        java.util.Set<UUID> want = new java.util.HashSet<>();
+        for (ServerPlayer p : ts) want.add(p.getUUID());
+        for (ServerPlayer p : Pv.nearby(server, ts)) want.add(p.getUUID());
+        if (!Pv.active()) for (ServerPlayer p : server.getPlayerList().getPlayers()) want.add(p.getUUID());   // no view sync: all, as always
+        for (UUID id : want) {
+            if (!everyone && blizzardShown.contains(id)) continue;
+            ServerPlayer p = server.getPlayerList().getPlayer(id);
+            if (p != null) ServerPlayNetworking.send(p, fx);
+        }
+        // someone who left the circle (or the group) is told it stopped
+        for (java.util.Iterator<UUID> it = blizzardShown.iterator(); it.hasNext(); ) {
+            UUID id = it.next();
+            if (want.contains(id)) continue;
+            it.remove();
+            ServerPlayer p = server.getPlayerList().getPlayer(id);
+            if (p != null) ServerPlayNetworking.send(p, new BlizzardFx(0, 0, 0, 0));
+        }
+        blizzardShown.addAll(want);
     }
 
-    /** A player who joins while it blows sees it too. */
+    /** Who has been sent the running blizzard. */
+    private static final java.util.Set<UUID> blizzardShown = new java.util.HashSet<>();
+
+    /** A player who joins while it blows sees it too (if they are a target; others are picked up by the once-a-second check). */
     public static void joined(ServerPlayer p) {
-        if (blizzardLeft > 0) ServerPlayNetworking.send(p, new BlizzardFx(blizzardX, blizzardZ, blizzardTotal, blizzardStart));
+        if (blizzardLeft > 0 && Pv.isTarget(p) && blizzardShown.add(p.getUUID()))
+            ServerPlayNetworking.send(p, new BlizzardFx(blizzardX, blizzardZ, blizzardTotal, blizzardStart));
     }
 
     /** 0→1 over the first 6 s, 1, then down to 0 over the last 6 s. */
@@ -465,9 +525,11 @@ public final class Disasters {
         if (blizzardLeft == 0) {
             Calamities.LOG.info("blizzard ends");
             blizzardTotal = 0;
+            blizzardShown.clear();   // clients stop by their own clock
             lastCrack.clear();
             return;
         }
+        if (tick % 20 == 0) sendBlizzard(server, false);
         CalamityConfig c = CalamityConfig.get();
         List<ServerPlayer> ps = targets(server);
         for (ServerPlayer p : ps) {
@@ -494,7 +556,7 @@ public final class Disasters {
                 // still water out under the sky freezes over (never right next to someone: no one gets locked in)
                 if (c.blizzardIce && under.is(Blocks.WATER) && ow.getFluidState(below).isSource() && ow.getBlockState(top).isAir()) {
                     boolean near = false;
-                    for (ServerPlayer o : ps) if (o.level() == ow && o.position().distanceTo(Vec3.atCenterOf(below)) < 2.5) near = true;
+                    for (ServerPlayer o : everyone(server)) if (o.level() == ow && o.position().distanceTo(Vec3.atCenterOf(below)) < 2.5) near = true;
                     if (near) continue;
                     ow.setBlockAndUpdate(below, Blocks.ICE.defaultBlockState());
                     ice = below;
@@ -527,6 +589,7 @@ public final class Disasters {
         blizzardLeft = 0;
         blizzardTotal = 0;
         lastCrack.clear();
+        blizzardShown.clear();   // calm() sends the stop to everyone who had it, first
         Calamities.LOG.info("blizzard stopped");
     }
 
@@ -616,11 +679,16 @@ public final class Disasters {
         quakeLeft = windLeft = 0;
         fissureAt = -1;   // a fissure already tearing open finishes (half a crack would look broken)
         if (stormLeft > 0) endStorm(server, "calm", false);
+        java.util.Set<UUID> hadBlizzard = new java.util.HashSet<>(blizzardShown);
         endBlizzard(server);   // snow and ice stay where they fell
         for (ServerPlayer p : server.getPlayerList().getPlayers()) {
-            ServerPlayNetworking.send(p, new QuakeFx(0, 0, 0));
-            ServerPlayNetworking.send(p, new WindFx(0, 0, 0, 0, 0, 0, 0));
-            ServerPlayNetworking.send(p, new BlizzardFx(0, 0, 0, 0));
+            boolean target = Pv.isTarget(p);
+            if (target) {
+                ServerPlayNetworking.send(p, new QuakeFx(0, 0, 0));
+                ServerPlayNetworking.send(p, new WindFx(0, 0, 0, 0, 0, 0, 0));
+            }
+            // the stop goes only to those who were sent the start (a target, or someone who stood near one)
+            if (target || hadBlizzard.contains(p.getUUID())) ServerPlayNetworking.send(p, new BlizzardFx(0, 0, 0, 0));
         }
         for (ServerLevel l : server.getAllLevels()) {
             for (Entity e : l.getEntities(Calamities.WRAITH, e -> true)) e.discard();
