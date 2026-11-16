@@ -301,8 +301,9 @@ public final class Disasters {
         level.addFreshEntity(b);
         if (variant >= 0) {
             ThunderVoice tv = new ThunderVoice(pos.x, pos.y, pos.z, variant);
-            for (ServerPlayer t : targets(level.getServer())) {
-                if (t.level() == level && t.distanceToSqr(pos) < 256.0 * 256.0) ServerPlayNetworking.send(t, tv);
+            // everyone of the target group in this level, spectators and the dead included (the camera crew hears it too)
+            for (ServerPlayer t : level.players()) {
+                if (Pv.isTarget(t) && t.distanceToSqr(pos) < 256.0 * 256.0) ServerPlayNetworking.send(t, tv);
             }
         }
         if (harm) {
