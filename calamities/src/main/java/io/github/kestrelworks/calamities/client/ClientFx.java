@@ -54,6 +54,9 @@ public final class ClientFx {
     /** Ticks since it started, or -1 when it is not running right now. */
     private static int elapsed(long start, int total, int tail) {
         long e = now() - start;
+        // the client clock trails the server by the ping: a sound that has only just arrived reads a few ticks "early".
+        // Count that as its start (otherwise the voice is stopped on its first tick and never heard)
+        if (e < 0 && e > -100) e = 0;
         return total > 0 && e >= 0 && e < total + tail ? (int) e : -1;
     }
 
