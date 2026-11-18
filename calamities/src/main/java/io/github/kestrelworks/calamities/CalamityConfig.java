@@ -62,6 +62,60 @@ public class CalamityConfig {
     /** Water near players freezes over, snow settles on the ground. */
     public boolean blizzardIce = true, blizzardSnow = true;
 
+    // ---- harshness: disasters hurt the targets (group S and directors; never other groups, spectators or creative)
+
+    /** Strength of everything below at once: 0 = no damage and everything as it was before, 1 = default, 2 = much harsher. */
+    public float harshness = 1.0f;
+    /** false: damage never kills (it stops at half a heart; burning is put out at the last hearts). */
+    public boolean harshLethal = true;
+
+    /** Quake: damage per jolt at magnitude 1 (a jolt is 50..100 % of it, times magnitude), the weakest magnitude that hurts, average ticks between jolts. */
+    public float quakeDamage = 4.0f;
+    public float quakeDamageMinMag = 0.15f;
+    public int quakeDamageInterval = 30;
+    /** Quake: rocks that come down from ceilings and cliffs near a target (chance per tick at magnitude 1, radius in blocks, damage, most in the air at once). */
+    public float quakeRockRate = 0.04f;
+    public int quakeRockRadius = 5;
+    public float quakeRockDamage = 5.0f;
+    public int quakeRockMax = 24;
+    /** Fissure grows by this much per 1.0 of harshness (length and depth). */
+    public float fissureHarshGrow = 0.3f;
+
+    /** Storm: average ticks between extra bolts landing a few blocks from each target out in the open (at harshness 1), and how near. */
+    public int stormNearEvery = 60;
+    public float stormNearMin = 2.5f, stormNearMax = 6.5f;
+    public float stormNearFireChance = 0.3f;
+    /** Storm: the direct-hit chance is multiplied by 1 + harshness * this. */
+    public float stormHitBoost = 2.0f;
+    /** Storm: damage of a direct hit (times 0.5 + 0.5 * harshness) and how long it sets the target on fire. */
+    public float stormHitDamage = 5.0f;
+    public int stormHitFireSeconds = 6;
+
+    /** Gale: the push is multiplied by 1 + harshness * this. */
+    public float windPushBoost = 0.6f;
+    /** Gale: pushed along the wind faster than this (blocks per tick) into a wall: damage = min(max, 1 + (speed - this) * scale). */
+    public float windSlamSpeed = 0.2f;
+    public float windSlamScale = 30f;
+    public float windSlamMax = 8f;
+    /** Gale: out in the open, about every this many ticks (at harshness 1) something flying hits the target for this much. */
+    public int windDebrisEvery = 120;
+    public float windDebrisDamage = 2.0f;
+
+    /** Blizzard: seconds out in the cold before it starts to hurt, damage and ticks between hurts (frost damage). */
+    public int blizzardColdSeconds = 12;
+    public float blizzardDamage = 2.0f;
+    public int blizzardDamageEvery = 40;
+    /** Blizzard: snow piles up to 2 + round(harshness * this) layers. */
+    public float blizzardThick = 2f;
+
+    /** Spirit: within this many blocks the target gets darkness and slowness; touching it hurts once (then it fades). */
+    public float spiritAura = 9f;
+    public float spiritTouchDamage = 5.0f;
+    public float spiritTouchRange = 1.4f;
+    /** Spirit: ticks after appearing before it starts to close in, and blocks per tick it closes in. */
+    public int spiritCloseDelay = 60;
+    public float spiritCloseRate = 0.012f;
+
     /** With a view-sync mod in the world: the group whose members disasters are about (empty = "S"). */
     public String targetGroup = "S";
     /** With a view-sync mod: others within this many blocks (same dimension) of a target see the storm sky and blizzard while it lasts. */

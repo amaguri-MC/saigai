@@ -56,9 +56,11 @@ final class Fissure {
     static Fissure plan(ServerLevel level, ServerPlayer p, float mag, List<ServerPlayer> everyone) {
         CalamityConfig c = CalamityConfig.get();
         float m = Mth.clamp(mag, 0, 1);
-        double length = c.fissureLength * (0.55 + 0.45 * m);
+        // harshness: a size longer and deeper (width as it was); harshness 0 = exactly as before
+        double grow = 1.0 + Disasters.harsh() * c.fissureHarshGrow;
+        double length = c.fissureLength * (0.55 + 0.45 * m) * grow;
         double halfW = c.fissureWidth * 0.5 * (0.55 + 0.45 * m);
-        double depth = c.fissureDepth * (0.5 + 0.5 * m);
+        double depth = c.fissureDepth * (0.5 + 0.5 * m) * grow;
         for (int attempt = 0; attempt < 40; attempt++) {
             double len = attempt < 25 ? length : length * 0.65;
             double toward = RNG.nextDouble() * Math.PI * 2;

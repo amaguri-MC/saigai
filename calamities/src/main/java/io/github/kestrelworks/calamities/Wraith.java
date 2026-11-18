@@ -9,6 +9,9 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -20,7 +23,8 @@ import net.minecraft.world.phys.Vec3;
 
 /**
  * A restless spirit. Drifts through walls, keeps a few blocks away from the one it haunts and stares at them,
- * then fades. It cannot be hurt and never hurts anyone.
+ * then fades. It cannot be hurt. With harshness on, it closes in on the one it haunts, darkens their sight and slows
+ * them while near, and hurts them once when it touches them (then fades); it never hurts anyone else.
  */
 public class Wraith extends Mob {
 
@@ -123,7 +127,22 @@ public class Wraith extends Mob {
         if (target == null) { beginFade(); setDeltaMovement(Vec3.ZERO); return; }
 
         double dist = Math.sqrt(target.distanceToSqr(this));
-        if (dist < 2.2 && tickCount > FADE_IN) beginFade();
+        CalamityConfig c = CalamityConfig.get();
+        float h = Disasters.harsh();
+        boolean harsh = h > 0f;
+        if (dist < 2.2 && tickCount > FADE_IN && !harsh) beginFade();
+        if (harsh && fadeAt() < 0 && target instanceof ServerPlayer sp && !sp.isCreative()) {
+            // near it the world goes dark and heavy (no icon, no text)
+            if (dist < c.spiritAura && tickCount % 10 == 0) {
+                sp.addEffect(new MobEffectInstance(MobEffects.DARKNESS, 60, 0, false, false, false));
+                sp.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 40, dist < c.spiritAura * 0.5 && h >= 1f ? 1 : 0, false, false, false));
+            }
+            // touching it hurts, once; then it fades
+            if (dist < c.spiritTouchRange && tickCount > FADE_IN) {
+                Disasters.harm(sp, sp.level().damageSources().magic(), c.spiritTouchDamage * h);
+                beginFade();
+            }
+        }
 
         // keep about 4.5 blocks off, slowly circling to the side the player is not looking at
         if (side == null || tickCount % 160 == 0) side = new Vec3(random.nextDouble() - 0.5, 0, random.nextDouble() - 0.5).normalize();
@@ -131,9 +150,13 @@ public class Wraith extends Mob {
         if (away.lengthSqr() < 1e-4) away = side;
         away = away.normalize().add(side.scale(0.25)).normalize();
         double bob = Math.sin(tickCount * 0.07) * 0.18;
-        Vec3 goal = target.position().add(away.scale(4.5)).add(0, 0.35 + bob, 0);
+        // harshness: after a short while it drifts closer and closer
+        double keep = 4.5;
+        int closing = tickCount - FADE_IN - c.spiritCloseDelay;
+        if (harsh && fadeAt() < 0 && closing > 0) keep = Math.max(0.6, 4.5 - closing * c.spiritCloseRate * h);
+        Vec3 goal = target.position().add(away.scale(keep)).add(0, 0.35 + bob, 0);
         Vec3 d = goal.subtract(position());
-        double speed = fadeAt() >= 0 ? 0.0 : 0.045;
+        double speed = fadeAt() >= 0 ? 0.0 : 0.045 * (harsh ? 1.0 + 0.5 * h : 1.0);
         Vec3 v = d.lengthSqr() > speed * speed ? d.normalize().scale(Math.min(speed, d.length())) : d;
         setDeltaMovement(v);
         move(net.minecraft.world.entity.MoverType.SELF, v);

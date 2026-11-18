@@ -23,6 +23,7 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.LivingEntity;
@@ -81,6 +82,13 @@ public final class Disasters {
         weatherOurs = false;
         blizzardLeft = blizzardTotal = 0;
         lastCrack.clear();
+        coldTicks.clear();
+        coldHurtAt.clear();
+        quakeNext.clear();
+        rocks.clear();
+        windLast.clear();
+        windAlong.clear();
+        windHurtAt.clear();
         blizzardShown.clear();
         stormShown.clear();
     }
@@ -104,6 +112,29 @@ public final class Disasters {
         List<ServerPlayer> out = everyone(server);
         out.removeIf(p -> !Pv.isTarget(p));
         return out;
+    }
+
+    // ---------------------------------------------------------------- harshness (damage to the targets)
+
+    /** Overall harshness, 0 (nothing hurts, everything as before) .. 4. */
+    static float harsh() {
+        float h = CalamityConfig.get().harshness;
+        return Float.isNaN(h) ? 0f : Mth.clamp(h, 0f, 4f);
+    }
+
+    /**
+     * The one way disasters hurt anybody. Only a target who is alive, not a spectator and not in creative is hurt
+     * (a group-P player, a spectator or a creative player is never touched). Damage is of a vanilla kind, so the death
+     * message reads like an ordinary death. With harshLethal off it stops at half a heart.
+     */
+    static boolean harm(ServerPlayer p, DamageSource src, float amount) {
+        if (harsh() <= 0f || amount <= 0f) return false;
+        if (!p.isAlive() || p.isSpectator() || p.isCreative() || !Pv.isTarget(p)) return false;
+        if (!CalamityConfig.get().harshLethal) {
+            amount = Math.min(amount, p.getHealth() - 1.0f);
+            if (amount <= 0f) return false;
+        }
+        return p.hurtServer(p.level(), src, amount);
     }
 
     // ---------------------------------------------------------------- earthquake
@@ -161,7 +192,10 @@ public final class Disasters {
 
     private static void quakeTick(MinecraftServer server) {
         fissureTick(server);
-        if (quakeLeft <= 0) return;
+        if (quakeLeft <= 0) {
+            if (!quakeNext.isEmpty()) quakeNext.clear();
+            return;
+        }
         quakeLeft--;
         float env = envelope(quakeTotal - quakeLeft, quakeTotal);
         // the first sign: dirt and grit jumping at everyone's feet
@@ -175,6 +209,8 @@ public final class Disasters {
                         p.getX(), p.getY() + 0.05, p.getZ(), n, 1.6, 0.02, 1.6, 0.12);
             }
         }
+        quakeHarm(server, env);
+        quakeRocks(server, env);
         if (!CalamityConfig.get().quakeLooseBlocks || quakeMag < 0.25f) return;
         // about mag^1.5 * 14 blocks per player over the whole quake, most of them at the peak
         float perTick = (float) (Math.pow(quakeMag, 1.5) * 14.0 / quakeTotal) * env * 1.6f;
@@ -200,6 +236,92 @@ public final class Disasters {
                         && Math.abs(o.getX() - (h.getX() + 0.5)) < 1.6 && Math.abs(o.getZ() - (h.getZ() + 0.5)) < 1.6);
                 if (nearAnyone) continue;
                 FallingBlockEntity.fall(level, hit, level.getBlockState(hit));
+                break;
+            }
+        }
+    }
+
+    /** Tick at which a target standing on the ground is next shaken hard enough to be hurt. */
+    private static final java.util.Map<UUID, Integer> quakeNext = new java.util.HashMap<>();
+
+    /** While it shakes, a target standing on the ground is thrown about: a jolt every 1-2 s, stronger with the magnitude (damage "fall"). */
+    private static void quakeHarm(MinecraftServer server, float env) {
+        CalamityConfig c = CalamityConfig.get();
+        float h = harsh();
+        if (h <= 0f || c.quakeDamage <= 0f || quakeMag < c.quakeDamageMinMag || env < 0.3f) return;
+        for (ServerPlayer p : targets(server)) {
+            if (p.isCreative() || !p.onGround() || p.getAbilities().flying || p.level().dimension() == Level.END) continue;
+            BlockState under = p.level().getBlockState(p.blockPosition().below());
+            if (under.isAir() || !under.getFluidState().isEmpty()) continue;
+            Integer next = quakeNext.get(p.getUUID());
+            if (next == null) { quakeNext.put(p.getUUID(), tick + 10 + RNG.nextInt(20)); continue; }
+            if (tick < next) continue;
+            quakeNext.put(p.getUUID(), tick + Math.max(8, Math.round(c.quakeDamageInterval * (0.67f + 0.67f * RNG.nextFloat()) / Mth.clamp(h, 0.5f, 2f))));
+            float dmg = c.quakeDamage * (0.5f + 0.5f * RNG.nextFloat()) * quakeMag * Math.max(0.5f, env) * h;
+            harm(p, p.level().damageSources().fall(), dmg);
+        }
+    }
+
+    private static final class Rock {
+        final FallingBlockEntity e;
+        boolean hit;
+        Rock(FallingBlockEntity e) { this.e = e; }
+    }
+
+    private static final List<Rock> rocks = new ArrayList<>();
+
+    /** Rocks that came loose from the ceiling or a cliff (only where there is a hollow below them), watched until they land. */
+    private static void quakeRocks(MinecraftServer server, float env) {
+        CalamityConfig c = CalamityConfig.get();
+        float h = harsh();
+        if (h <= 0f || c.quakeRockRate <= 0f || quakeMag < c.quakeDamageMinMag || env < 0.3f) return;
+        float chance = c.quakeRockRate * quakeMag * env * h;
+        for (ServerPlayer p : targets(server)) {
+            if (rocks.size() >= c.quakeRockMax) return;
+            ServerLevel level = p.level();
+            if (p.isCreative() || level.dimension() == Level.END || RNG.nextFloat() >= chance) continue;
+            int r = Math.max(2, c.quakeRockRadius);
+            for (int attempt = 0; attempt < 14; attempt++) {
+                BlockPos base = p.blockPosition().offset(RNG.nextInt(2 * r + 1) - r, 0, RNG.nextInt(2 * r + 1) - r);
+                BlockPos hit = null;
+                for (int dy = 2; dy <= 8; dy++) {
+                    BlockPos q = base.above(dy);
+                    BlockState s = level.getBlockState(q);
+                    if (s.isAir() || !s.getFluidState().isEmpty() || s.is(BlockTags.LEAVES) || !loose(s)) continue;
+                    if (Built.is(level, q)) continue;
+                    // a ceiling or an overhang: air under it (a hollow)
+                    if (level.getBlockState(q.below()).isAir() && level.getBlockState(q.below(2)).isAir()) { hit = q; break; }
+                }
+                if (hit == null) continue;
+                final BlockPos hp = hit;
+                boolean onOther = everyone(server).stream().anyMatch(o -> o.level() == level && !Pv.isTarget(o)
+                        && Math.abs(o.getX() - (hp.getX() + 0.5)) < 1.6 && Math.abs(o.getZ() - (hp.getZ() + 0.5)) < 1.6);
+                if (onOther) continue;
+                BlockState rock = RNG.nextFloat() < 0.7f ? Blocks.GRAVEL.defaultBlockState() : Blocks.COBBLESTONE.defaultBlockState();
+                FallingBlockEntity f = FallingBlockEntity.fall(level, hit, rock);
+                f.dropItem = false;
+                rocks.add(new Rock(f));
+                level.sendParticles(new net.minecraft.core.particles.BlockParticleOption(net.minecraft.core.particles.ParticleTypes.BLOCK, rock),
+                        hit.getX() + 0.5, hit.getY() + 0.2, hit.getZ() + 0.5, 8, 0.4, 0.2, 0.4, 0.05);
+                break;
+            }
+        }
+    }
+
+    /** A rock that passes through a target hurts them once (damage "falling block"). Others are never hurt. */
+    private static void rocksTick(MinecraftServer server) {
+        if (rocks.isEmpty()) return;
+        float h = harsh();
+        List<ServerPlayer> ts = h > 0f ? targets(server) : List.of();
+        for (Iterator<Rock> it = rocks.iterator(); it.hasNext(); ) {
+            Rock r = it.next();
+            if (!r.e.isAlive()) { it.remove(); continue; }
+            if (r.hit || h <= 0f) continue;
+            AABB box = r.e.getBoundingBox().inflate(0.1);
+            for (ServerPlayer p : ts) {
+                if (p.level() != r.e.level() || !box.intersects(p.getBoundingBox())) continue;
+                r.hit = true;
+                harm(p, p.level().damageSources().fallingBlock(r.e), CalamityConfig.get().quakeRockDamage * h);
                 break;
             }
         }
@@ -311,6 +433,7 @@ public final class Disasters {
             for (Entity e : level.getEntities((Entity) null, box, e -> e instanceof LivingEntity && e.isAlive() && !(e instanceof Wraith))) {
                 if (!level.canSeeSky(e.blockPosition().above())) continue;
                 if (e instanceof Player pl && !Pv.isTarget(pl)) continue;   // seen by anyone near, struck only the target
+                if (e instanceof ServerPlayer sp && harsh() > 0f) { lightningHit(sp); continue; }
                 e.thunderHit(level, b);
             }
         }
@@ -320,6 +443,28 @@ public final class Disasters {
                 BlockState st = BaseFireBlock.getState(level, f);
                 if (st.canSurvive(level, f)) level.setBlockAndUpdate(f, st);
             }
+        }
+    }
+
+    /** A direct hit on a target: vanilla lightning damage ("struck by lightning") and they burn. */
+    private static void lightningHit(ServerPlayer p) {
+        CalamityConfig c = CalamityConfig.get();
+        float h = harsh();
+        if (harm(p, p.level().damageSources().lightningBolt(), c.stormHitDamage * (0.5f + 0.5f * h))) {
+            p.setRemainingFireTicks(Math.max(p.getRemainingFireTicks(), c.stormHitFireSeconds * 20));
+        }
+    }
+
+    /** An extra bolt a few blocks from a target who is out in the open (never within 2 blocks of anyone). */
+    private static void nearBolt(ServerLevel ow, ServerPlayer p, List<ServerPlayer> all, CalamityConfig c) {
+        for (int i = 0; i < 6; i++) {
+            double dist = c.stormNearMin + RNG.nextDouble() * Math.max(0.1f, c.stormNearMax - c.stormNearMin), ang = RNG.nextDouble() * Math.PI * 2;
+            Vec3 g = ground(ow, p, p.getX() + Math.cos(ang) * dist, p.getZ() + Math.sin(ang) * dist);
+            boolean near = false;
+            for (ServerPlayer o : all) if (o.level() == ow && o.position().multiply(1, 0, 1).distanceTo(g.multiply(1, 0, 1)) < 2.0) near = true;
+            if (near) continue;
+            strike(ow, g, -1, RNG.nextFloat() < c.stormNearFireChance, true);
+            return;
         }
     }
 
@@ -352,12 +497,16 @@ public final class Disasters {
         CalamityConfig c = CalamityConfig.get();
         List<ServerPlayer> ps = targets(server);
         List<ServerPlayer> all = everyone(server);
+        float h = harsh();
         for (ServerPlayer p : ps) {
             if (p.level() != ow) continue;
+            // harshness: extra bolts a few blocks from a target who is out in the open
+            if (h > 0f && c.stormNearEvery > 0 && !p.isCreative() && RNG.nextFloat() < h / c.stormNearEvery
+                    && ow.canSeeSky(p.blockPosition().above())) nearBolt(ow, p, all, c);
             if (RNG.nextInt(Math.max(1, c.stormBoltEvery)) != 0) continue;
             boolean open = ow.canSeeSky(p.blockPosition().above());
             Vec3 at = null;
-            if (open && RNG.nextFloat() < c.stormHitChance) {
+            if (open && RNG.nextFloat() < Math.min(0.9f, c.stormHitChance * (1f + h * c.stormHitBoost))) {
                 at = Vec3.atBottomCenterOf(ow.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING, p.blockPosition()));
                 if (at.y > p.getY() + 3) at = null;
                 else at = new Vec3(p.getX(), at.y, p.getZ());
@@ -417,7 +566,7 @@ public final class Disasters {
         windX = (float) Math.cos(ang);
         windZ = (float) Math.sin(ang);
         windTotal = windLeft = Math.round(170 * Math.max(0.6f, CalamityConfig.get().intensity));
-        windPush = CalamityConfig.get().galePush * CalamityConfig.get().intensity;
+        windPush = CalamityConfig.get().galePush * CalamityConfig.get().intensity * (1f + harsh() * CalamityConfig.get().windPushBoost);
         int stage = voiceStage(galeCount++);
         Calamities.LOG.info("windstorm dir=({}, {}) ticks={} voice stage {} ({})", String.format("%.2f", windX), String.format("%.2f", windZ), windTotal, stage, src);
         WindFx fx = new WindFx(windX, windZ, windPush, CalamityConfig.get().galeEndFactor, windTotal,
@@ -425,8 +574,55 @@ public final class Disasters {
         for (ServerPlayer p : targets(server)) ServerPlayNetworking.send(p, fx);
     }
 
+    private static final java.util.Map<UUID, Vec3> windLast = new java.util.HashMap<>();
+    private static final java.util.Map<UUID, Double> windAlong = new java.util.HashMap<>();
+    private static final java.util.Map<UUID, Integer> windHurtAt = new java.util.HashMap<>();
+
+    /**
+     * Harshness in a gale, for a target out in the open: pushed along the wind and stopped short by a wall
+     * ("experienced kinetic energy"), and now and then something flying hits them (same kind of damage).
+     * Their speed is read from where the server sees them from tick to tick.
+     */
+    private static void windHarm(ServerPlayer p, float env) {
+        CalamityConfig c = CalamityConfig.get();
+        float h = harsh();
+        if (h <= 0f) return;
+        UUID id = p.getUUID();
+        Vec3 now = p.position(), last = windLast.put(id, now);
+        double prevAlong = windAlong.getOrDefault(id, 0.0);
+        double along = last == null ? 0 : (now.x - last.x) * windX + (now.z - last.z) * windZ;
+        windAlong.put(id, along);
+        if (h <= 0f || last == null || env < 0.3f) return;
+        ServerLevel level = p.level();
+        if (p.isCreative() || p.isSpectator() || p.getAbilities().flying || p.isFallFlying() || p.isPassenger() || p.isInWater()) return;
+        if (!level.canSeeSky(p.blockPosition().above())) return;
+        if (tick < windHurtAt.getOrDefault(id, 0)) return;
+        // pushed hard, then stopped dead with a solid block right ahead
+        if (prevAlong >= c.windSlamSpeed && along < prevAlong * 0.35) {
+            BlockPos a = BlockPos.containing(now.x + windX * 0.7, now.y + 0.5, now.z + windZ * 0.7);
+            boolean wall = false;
+            for (BlockPos q : new BlockPos[]{a, a.above()}) {
+                if (!level.getBlockState(q).getCollisionShape(level, q).isEmpty()) wall = true;
+            }
+            if (wall) {
+                float dmg = (float) Math.min(c.windSlamMax, 1.0 + (prevAlong - c.windSlamSpeed) * c.windSlamScale) * h;
+                windHurtAt.put(id, tick + 20);
+                harm(p, level.damageSources().flyIntoWall(), dmg);
+                return;
+            }
+        }
+        // something blown along hits them
+        if (c.windDebrisEvery > 0 && RNG.nextFloat() < h / c.windDebrisEvery) {
+            windHurtAt.put(id, tick + 20);
+            harm(p, level.damageSources().flyIntoWall(), c.windDebrisDamage * h);
+        }
+    }
+
     private static void windTick(MinecraftServer server) {
-        if (windLeft <= 0) return;
+        if (windLeft <= 0) {
+            if (!windLast.isEmpty()) { windLast.clear(); windAlong.clear(); windHurtAt.clear(); }
+            return;
+        }
         windLeft--;
         float env = windEnvelope(windTotal - windLeft, windTotal);
         // players push themselves on their own side (smooth); here: dropped items and mobs near players
@@ -441,6 +637,7 @@ public final class Disasters {
                 e.push(windX * k, 0, windZ * k);
                 e.hurtMarked = true;
             }
+            windHarm(p, env);
         }
     }
 
@@ -543,6 +740,8 @@ public final class Disasters {
             blizzardTotal = 0;
             blizzardShown.clear();   // clients stop by their own clock
             lastCrack.clear();
+            coldTicks.clear();
+            coldHurtAt.clear();
             return;
         }
         if (tick % 20 == 0) sendBlizzard(server, false);
@@ -551,16 +750,27 @@ public final class Disasters {
         for (ServerPlayer p : ps) {
             if (p.level() != ow) continue;
             // out in it you slowly go stiff with cold (the vanilla frost: frosted screen edge, heavy legs)
+            float h = harsh();
             if (env > 0.2f && p.canFreeze() && !p.isCreative() && ow.canSeeSky(p.blockPosition().above())) {
-                int cap = c.blizzardHarm ? Integer.MAX_VALUE : Math.round(p.getTicksRequiredToFreeze() * Mth.clamp(c.blizzardFreeze, 0f, 0.95f));
+                // harshness: stay out in the cold long enough and the frost starts to hurt (vanilla freezing damage, "froze to death")
+                int cold = h > 0f ? cold(p.getUUID(), 1) : 0;
+                boolean hurting = h > 0f && c.blizzardDamage > 0f
+                        && cold >= Math.round(c.blizzardColdSeconds * 20 / Mth.clamp(h, 0.5f, 2f));
+                if (hurting && tick >= coldHurtAt.getOrDefault(p.getUUID(), 0)) {
+                    coldHurtAt.put(p.getUUID(), tick + Math.max(10, c.blizzardDamageEvery));
+                    harm(p, ow.damageSources().freeze(), c.blizzardDamage * h);
+                }
+                int cap = c.blizzardHarm ? Integer.MAX_VALUE : Math.round(p.getTicksRequiredToFreeze() * (hurting ? 0.95f : Mth.clamp(c.blizzardFreeze, 0f, 0.95f)));
                 // vanilla thaws 2 a tick outside powder snow: +2..3 here = slowly colder
                 int add = 2 + (RNG.nextFloat() < 0.45f * env ? 1 : 0);
                 int now = p.getTicksFrozen();
                 if (now < cap) p.setTicksFrozen(Math.min(cap, now + add));
+            } else if (h > 0f) {
+                cold(p.getUUID(), -2);   // under a roof (or armoured against it) the cold lets go
             }
             if (env < 0.15f) continue;
             BlockPos ice = null;
-            int tries = Math.round(6 * env);
+            int tries = Math.round(6 * env * (1f + 0.5f * h));
             for (int i = 0; i < tries; i++) {
                 int dx = RNG.nextInt(29) - 14, dz = RNG.nextInt(29) - 14;
                 if (dx * dx + dz * dz > 14 * 14) continue;
@@ -582,7 +792,7 @@ public final class Disasters {
                 BlockState at = ow.getBlockState(top);
                 if (at.is(Blocks.SNOW)) {
                     int layers = at.getValue(net.minecraft.world.level.block.SnowLayerBlock.LAYERS);
-                    if (layers < 2 && RNG.nextFloat() < 0.08f) ow.setBlockAndUpdate(top, at.setValue(net.minecraft.world.level.block.SnowLayerBlock.LAYERS, layers + 1));
+                    if (layers < Math.min(8, 2 + Math.round(h * c.blizzardThick)) && RNG.nextFloat() < 0.08f * (1f + h)) ow.setBlockAndUpdate(top, at.setValue(net.minecraft.world.level.block.SnowLayerBlock.LAYERS, layers + 1));
                 } else if (at.isAir() && RNG.nextFloat() < 0.6f) {
                     BlockState snow = Blocks.SNOW.defaultBlockState();
                     if (snow.canSurvive(ow, top) && !under.is(Blocks.ICE)) ow.setBlockAndUpdate(top, snow);
@@ -600,11 +810,24 @@ public final class Disasters {
         }
     }
 
+    /** Ticks each target has spent out in the blizzard (it drains when they are sheltered). */
+    private static final java.util.Map<UUID, Integer> coldTicks = new java.util.HashMap<>();
+    private static final java.util.Map<UUID, Integer> coldHurtAt = new java.util.HashMap<>();
+
+    private static int cold(UUID id, int by) {
+        int v = coldTicks.getOrDefault(id, 0) + by;
+        if (v <= 0) { coldTicks.remove(id); return 0; }
+        coldTicks.put(id, v);
+        return v;
+    }
+
     private static void endBlizzard(MinecraftServer server) {
         if (blizzardLeft <= 0 && blizzardTotal <= 0) return;
         blizzardLeft = 0;
         blizzardTotal = 0;
         lastCrack.clear();
+        coldTicks.clear();
+        coldHurtAt.clear();
         blizzardShown.clear();   // calm() sends the stop to everyone who had it, first
         Calamities.LOG.info("blizzard stopped");
     }
@@ -726,5 +949,15 @@ public final class Disasters {
         quakeTick(server);
         windTick(server);
         blizzardTick(server);
+        rocksTick(server);
+        spareTheLast(server);
+    }
+
+    /** harshLethal off: a target who is burning at their last hearts is put out (damage itself already stops at half a heart). */
+    private static void spareTheLast(MinecraftServer server) {
+        if (CalamityConfig.get().harshLethal || harsh() <= 0f || tick % 5 != 0) return;
+        for (ServerPlayer p : targets(server)) {
+            if (p.isOnFire() && p.getHealth() <= 2.5f) p.clearFire();
+        }
     }
 }
