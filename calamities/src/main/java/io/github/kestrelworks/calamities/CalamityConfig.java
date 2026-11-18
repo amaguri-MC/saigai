@@ -66,6 +66,8 @@ public class CalamityConfig {
     public String targetGroup = "S";
     /** With a view-sync mod: others within this many blocks (same dimension) of a target see the storm sky and blizzard while it lasts. */
     public float shareRadius = 64f;
+    /** With a view-sync mod: its directors get the disasters too, whatever their group (for trying things out). */
+    public boolean directorsAreTargets = true;
 
     /** World event feed (lets an external weather/event controller drive disasters). */
     public boolean feedEnabled = true;

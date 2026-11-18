@@ -382,7 +382,9 @@ public final class Disasters {
 
     private static void shareStorm(MinecraftServer server) {
         java.util.Set<UUID> want = new java.util.HashSet<>();
-        List<ServerPlayer> near = stormLeft > 0 ? Pv.nearby(server, targets(server)) : List.of();
+        List<ServerPlayer> near = new java.util.ArrayList<>(stormLeft > 0 ? Pv.nearby(server, targets(server)) : List.of());
+        // a director who gets the disasters sees the target group's storm sky too (their own sky follows the director view)
+        if (stormLeft > 0 && Pv.active()) for (ServerPlayer d : targets(server)) if (Pv.director(d)) near.add(d);
         for (ServerPlayer o : near) {
             want.add(o.getUUID());
             if (stormShown.add(o.getUUID())) Pv.overlay(o, true);

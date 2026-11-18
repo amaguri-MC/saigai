@@ -69,6 +69,7 @@ final class Pv {
     static boolean isTarget(Player p) {
         if (!active()) return true;
         if (broken) return false;
+        if (CalamityConfig.get().directorsAreTargets && director(p)) return true;
         try {
             return (boolean) isMember.invoke(p.getUUID(), group());
         } catch (Throwable t) {
@@ -76,7 +77,7 @@ final class Pv {
         }
     }
 
-    private static boolean director(Player p) {
+    static boolean director(Player p) {
         try {
             return (boolean) isDirector.invoke(p.getUUID());
         } catch (Throwable t) {
